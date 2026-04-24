@@ -747,6 +747,43 @@
     color: rgba(255,255,255,0.75);
     letter-spacing: 0.5px;
   }
+
+  /* Breaking news toast — stacks below the trade toast, wider for longer text */
+  .news-toast {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 55;
+    background: linear-gradient(135deg, #1a1a2a, #0a0a15);
+    border: 1px solid rgba(212,162,74,0.4);
+    border-left: 3px solid var(--gold);
+    padding: 8px 12px;
+    max-width: 340px;
+    opacity: 0;
+    transform: translateX(calc(-100% - 20px));
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+
+  .news-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .news-toast .toast-label {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 2px;
+    color: var(--gold);
+    font-size: 9px;
+    margin-bottom: 3px;
+  }
+
+  .news-toast .toast-desc {
+    font-size: 11px;
+    color: rgba(255,255,255,0.9);
+    line-height: 1.35;
+  }
 </style>
 </head>
 <body>
@@ -757,6 +794,10 @@
 
 <div class="trade-toast" id="trade-toast">
   <div id="trade-toast-body"></div>
+</div>
+
+<div class="news-toast" id="news-toast">
+  <div id="news-toast-body"></div>
 </div>
 
 <div class="announcement" id="announcement">
@@ -800,7 +841,7 @@
   </div>
   <div class="controls">
     <button class="btn" id="btn-refresh">↻ SYNC</button>
-    <button class="btn" id="btn-debug">DEBUG</button>
+    <button class="btn" id="btn-debug" style="display:none;">DEBUG</button>
   </div>
 </div>
 
@@ -904,6 +945,9 @@ const TEAM_ABBR = {
 };
 
 function teamLogoUrl(teamName, size = 500) {
+  // Prefer ESPN's canonical URL (populated from json.teams[] at runtime).
+  // Falls back to our abbreviation-based URL if we haven't fetched yet.
+  if (TEAM_LOGO_URL_MAP[teamName]) return TEAM_LOGO_URL_MAP[teamName];
   const abbr = TEAM_ABBR[teamName];
   if (!abbr) return null;
   return `https://a.espncdn.com/i/teamlogos/nfl/${size}/${abbr}.png`;
@@ -970,6 +1014,7 @@ let draftState = staticOrder.map(o => ({ ...o, player: null, pos: null, school: 
 let lastAnnouncedPick = 0;  // highest announced pick number seen
 let lastAnimatedPick = 0;   // the pick number that was last given the 'new' animation class
 let currentRound = 1;       // round number, updated from ESPN when available
+const seenNewsIds = new Set(); // news items we've already surfaced; prevents repeats
 let pickTimerStart = Date.now(); // when current pick's 10-min clock started
 let clockSyncedToFeed = false;    // true when the clock origin came from ESPN data
 let feedStatus = 'connecting'; // 'live' | 'stale' | 'error' | 'connecting'
@@ -1347,10 +1392,28 @@ async function handleEvent(event) {
       showTradeToast(event.pick, event.tradeDescription);
       await sleep(1500); // shorter — trade toast is a subtler interruption
       break;
+    case 'news_posted':
+      showNewsToast(event.news);
+      await sleep(1200);
+      break;
     default:
       // No celebration; return immediately so subsequent queued events proceed.
       break;
   }
+}
+
+// Small corner toast for breaking news items (Schefter scoops, etc.)
+function showNewsToast(news) {
+  const toast = document.getElementById('news-toast');
+  const body = document.getElementById('news-toast-body');
+  body.innerHTML = `
+    <div class="toast-label">📰 ${news.byline.toUpperCase()}</div>
+    <div class="toast-desc">${news.headline}</div>
+  `;
+  toast.classList.add('show');
+  // Auto-dismiss after 6s (enough to read a Schefter scoop)
+  clearTimeout(window.__newsToastTimer);
+  window.__newsToastTimer = setTimeout(() => toast.classList.remove('show'), 6000);
 }
 
 // Small corner toast for trades — distinct from the big pick-announcement modal.
@@ -1409,80 +1472,27 @@ function announcePick(pick) {
 //   - position (abbreviation)
 //   - college/school
 // ==================================================================
-// ESPN team ID → full team name. Used when ESPN's pick payload only
-// includes teamId (not the full team object), which happens for mid-draft
-// traded picks. The ID is ESPN's internal numeric team ID, stable across seasons.
-const TEAM_ID_MAP = {
-  '1': 'Atlanta Falcons',
-  '2': 'Buffalo Bills',
-  '3': 'Chicago Bears',
-  '4': 'Cincinnati Bengals',
-  '5': 'Cleveland Browns',
-  '6': 'Dallas Cowboys',
-  '7': 'Denver Broncos',
-  '8': 'Detroit Lions',
-  '9': 'Green Bay Packers',
-  '10': 'Tennessee Titans',
-  '11': 'Indianapolis Colts',
-  '12': 'Kansas City Chiefs',
-  '13': 'Las Vegas Raiders',
-  '14': 'Los Angeles Rams',
-  '15': 'Miami Dolphins',
-  '16': 'Minnesota Vikings',
-  '17': 'New England Patriots',
-  '18': 'New Orleans Saints',
-  '19': 'New York Giants',
-  '20': 'New York Jets',
-  '21': 'Philadelphia Eagles',
-  '22': 'Arizona Cardinals',
-  '23': 'Pittsburgh Steelers',
-  '24': 'Los Angeles Chargers',
-  '25': 'San Francisco 49ers',
-  '26': 'Seattle Seahawks',
-  '27': 'Tampa Bay Buccaneers',
-  '28': 'Washington Commanders',
-  '29': 'Carolina Panthers',
-  '30': 'Jacksonville Jaguars',
-  '33': 'Baltimore Ravens',
-  '34': 'Houston Texans'
-};
-
-// ESPN position ID → abbreviation map.
+// ESPN position and team data are available in the draft response itself
+// under json.positions[] and json.teams[]. We populate these lookup maps
+// dynamically on every fetch so the data is always current and complete.
+// Static fallbacks are provided only for cases where the runtime data
+// hasn't loaded yet (pre-first-fetch).
 const POSITION_ID_MAP = {
-  '1': 'WR',
-  '2': 'RB',
-  '3': 'FB',
-  '4': 'WR',
-  '5': 'TE',
-  '6': 'OL',
-  '7': 'OT',
-  '8': 'QB',
-  '9': 'RB',
-  '10': 'DL',
-  '11': 'DE',
-  '12': 'DT',
-  '13': 'NT',
-  '14': 'LB',
-  '15': 'ILB',
-  '16': 'OLB',
-  '17': 'MLB',
-  '18': 'DB',
-  '19': 'CB',
-  '20': 'S',
-  '21': 'FS',
-  '22': 'SS',
-  '23': 'K',
-  '24': 'P',
-  '25': 'LS',
-  '26': 'KR',
-  '27': 'PR',
-  '28': 'ATH',
-  '44': 'EDGE',
-  '46': 'OT',
-  '93': 'DL',
-  '94': 'EDGE',
+  '1':   'WR',
+  '8':   'QB',
+  '9':   'RB',
+  '46':  'OT',
   '264': 'EDGE'
 };
+
+const TEAM_ID_MAP = {
+  // Fallback only — overridden at runtime from json.teams[]
+};
+
+// Optional: once we load ESPN's team list, we also cache their exact logo
+// URLs. Keyed by team display name, used by teamLogoUrl() as a higher-
+// fidelity source than our guessed abbreviation-based URLs.
+const TEAM_LOGO_URL_MAP = {};
 
 function resolvePosition(positionObj) {
   if (!positionObj) return null;
@@ -1492,6 +1502,32 @@ function resolvePosition(positionObj) {
     || positionObj.name
     || POSITION_ID_MAP[positionObj.id]
     || (positionObj.id ? `POS-${positionObj.id}` : null);
+}
+
+// Called before picks are extracted. ESPN's draft response includes
+// json.positions[] and json.teams[] — the full, authoritative lookup
+// tables for position IDs and team IDs. By merging these into our maps
+// at runtime, we never need to guess or maintain a hardcoded list that
+// could fall out of sync.
+function hydrateReferenceMaps(json) {
+  if (Array.isArray(json?.positions)) {
+    json.positions.forEach(pos => {
+      if (pos.id && pos.abbreviation) {
+        POSITION_ID_MAP[String(pos.id)] = pos.abbreviation;
+      }
+    });
+  }
+  if (Array.isArray(json?.teams)) {
+    json.teams.forEach(team => {
+      if (team.id && team.displayName) {
+        TEAM_ID_MAP[String(team.id)] = team.displayName;
+      }
+      // Cache ESPN's canonical logo URL keyed by display name
+      if (team.displayName && team.logo) {
+        TEAM_LOGO_URL_MAP[team.displayName] = team.logo;
+      }
+    });
+  }
 }
 
 function extractPicks(json) {
@@ -1580,6 +1616,20 @@ function extractClockStatus(json) {
   return null;
 }
 
+// Extract ESPN's breakingNews[] — Schefter + Co. live ticker. Each entry
+// has { id, descriptions.headline, dates.created, attributes.byline }.
+// We return them newest-first and let the event loop filter ones we've
+// already shown (by id).
+function extractBreakingNews(json) {
+  if (!Array.isArray(json?.breakingNews)) return [];
+  return json.breakingNews.map(item => ({
+    id: item.id,
+    headline: item.descriptions?.headline || item.payload || '',
+    byline: item.attributes?.byline?.value || item.attributes?.byline || 'ESPN',
+    created: item.dates?.created ? new Date(item.dates.created).getTime() : 0
+  })).filter(n => n.id && n.headline);
+}
+
 async function tryFetch(strategy) {
   const res = await fetch(strategy.url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1621,8 +1671,10 @@ async function fetchDraftData() {
 
   // Successfully got JSON — extract picks and update state
   window.__lastEspnJson = json;  // exposed for the DEBUG button to inspect
+  hydrateReferenceMaps(json);    // populate position/team maps from authoritative source
   const extracted = extractPicks(json);
   const clockStatus = extractClockStatus(json);
+  const breakingNews = extractBreakingNews(json);
 
   // ============ DIFF + EVENT EMISSION ============
   // For each pick ESPN returned, compare against our local slot and emit
@@ -1698,13 +1750,28 @@ async function fetchDraftData() {
     if (ep.status) slot.status = ep.status;
   });
 
+  // --- EVENT: news_posted ---
+  // Each breaking-news item shows once as a ticker event. On first fetch,
+  // mark everything as already seen (suppresses replay on page reload).
+  breakingNews.forEach(news => {
+    if (!seenNewsIds.has(news.id)) {
+      seenNewsIds.add(news.id);
+      if (!isFirstFetch) {
+        newEvents.push({ type: 'news_posted', news });
+      }
+    }
+  });
+
   // Enqueue events in pick order so they play naturally (earlier picks first,
   // earlier events first). Trades that fire alongside a pick on the same team
   // are attached to that pick: the pick celebration shows first, then trade toast.
+  // News events don't belong to a pick — they sort by their creation timestamp.
   newEvents.sort((a, b) => {
-    if (a.pick.pick !== b.pick.pick) return a.pick.pick - b.pick.pick;
-    // Same pick: pick_made comes before trade_detected for readability.
-    const order = { pick_made: 0, trade_detected: 1 };
+    // News ordered by created time; anchor at 0 so picks still group naturally
+    const aPick = a.pick?.pick || 0;
+    const bPick = b.pick?.pick || 0;
+    if (aPick !== bPick) return aPick - bPick;
+    const order = { pick_made: 0, trade_detected: 1, news_posted: 2 };
     return (order[a.type] || 99) - (order[b.type] || 99);
   });
   newEvents.forEach(e => enqueueEvent(e));
