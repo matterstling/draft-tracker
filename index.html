@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 NFL Draft — Live Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0a0e1a;
+    --ink-2: #12182b;
+    --chrome: #e8e6df;
+    --gold: #d4a24a;
+    --red: #d2232a;
+    --blue: #013369;
+    --green: #3fb87a;
+    --grid: rgba(255,255,255,0.04);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--ink);
+    color: var(--chrome);
+    font-family: 'Oswald', sans-serif;
+    overflow: hidden;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse at top, rgba(1,51,105,0.35), transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(210,35,42,0.18), transparent 55%),
+      linear-gradient(180deg, #0a0e1a 0%, #06090f 100%);
+    min-height: 100vh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      linear-gradient(0deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ==== HEADER ==== */
+  header {
+    position: relative;
+    z-index: 2;
+    padding: 8px 12px;
+    border-bottom: 2px solid rgba(212,162,74,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(6,9,15,0.7);
+    backdrop-filter: blur(10px);
+    flex-shrink: 0;
+  }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
+
+  .brand h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+
+  .brand .sub {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-top: 2px;
+  }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px;
+    background: var(--red);
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 2px;
+    font-size: 10px;
+  }
+
+  .live-badge.offline { background: #555; }
+  .live-badge.checking { background: var(--gold); color: var(--ink); }
+
+  .live-dot {
+    width: 6px; height: 6px;
+    background: white; border-radius: 50%;
+    animation: pulse 1.2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.8); }
+  }
+
+  /* ==== STATUS BANNER ==== */
+  .status-banner {
+    padding: 6px 12px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-align: center;
+    background: rgba(0,0,0,0.4);
+    border-bottom: 1px solid rgba(212,162,74,0.2);
+    flex-shrink: 0;
+  }
+
+  .status-banner.ok { color: var(--green); }
+  .status-banner.warn { color: var(--gold); }
+  .status-banner.err { color: #ff6b6b; }
+
+  /* ==== CLOCK BAR ==== */
+  .clock-bar {
+    position: relative;
+    z-index: 2;
+    padding: 10px 12px;
+    background: linear-gradient(90deg, var(--blue) 0%, #01254d 100%);
+    border-bottom: 1px solid rgba(212,162,74,0.4);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .clock-label {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 2px;
+    font-size: 9px;
+    color: var(--gold);
+    margin-bottom: 2px;
+  }
+
+  .clock-team {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 1px;
+    line-height: 1.05;
+  }
+
+  .clock-team-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .clock-center { text-align: center; }
+
+  .clock-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(212,162,74,0.5);
+    line-height: 1;
+  }
+
+  .clock-pick {
+    font-family: 'Oswald', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-top: 3px;
+    opacity: 0.8;
+  }
+
+  .controls { text-align: right; display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+
+  .btn {
+    padding: 5px 8px;
+    background: transparent;
+    border: 1.5px solid var(--gold);
+    color: var(--gold);
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn:hover { background: var(--gold); color: var(--ink); }
+
+  .btn.primary {
+    background: var(--red);
+    border-color: var(--red);
+    color: white;
+  }
+
+  .btn.primary:hover { background: white; color: var(--red); }
+
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ==== MAIN ==== */
+  main {
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px 12px;
+    gap: 8px;
+  }
+
+  .panel {
+    background: rgba(18,24,43,0.7);
+    border: 1px solid rgba(212,162,74,0.2);
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .panel-header {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(212,162,74,0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.3);
+    flex-shrink: 0;
+  }
+
+  .panel-header h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: var(--gold);
+  }
+
+  .panel-header .count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .draft-list {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.2s;
+  }
+
+  .draft-list:hover {
+    scrollbar-color: rgba(212,162,74,0.3) transparent;
+  }
+
+  .draft-list::-webkit-scrollbar { width: 6px; }
+  .draft-list::-webkit-scrollbar-track { background: transparent; }
+  .draft-list::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
+  .draft-list:hover::-webkit-scrollbar-thumb { background: rgba(212,162,74,0.3); }
+
+  /* Horizontal strip for recent picks */
+  .recent-strip {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.2s;
+  }
+
+  .recent-strip:hover {
+    scrollbar-color: rgba(212,162,74,0.3) transparent;
+  }
+
+  .recent-strip::-webkit-scrollbar { height: 6px; }
+  .recent-strip::-webkit-scrollbar-track { background: transparent; }
+  .recent-strip::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
+  .recent-strip:hover::-webkit-scrollbar-thumb { background: rgba(212,162,74,0.3); }
+
+  .recent-card {
+    flex: 0 0 200px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(212,162,74,0.15);
+    border-radius: 3px;
+    padding: 8px 10px;
+    position: relative;
+  }
+
+  .recent-card .team-logo {
+    width: 32px !important;
+    height: 32px !important;
+    object-fit: contain;
+    display: block;
+    margin-bottom: 6px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+  }
+
+  .recent-card.new {
+    animation: pickReveal 0.8s ease-out;
+  }
+
+  .recent-card .num {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    color: var(--gold);
+    line-height: 1;
+    opacity: 0.7;
+  }
+
+  .recent-card .team {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.8px;
+    line-height: 1.1;
+    margin-bottom: 4px;
+    padding-right: 22px;
+  }
+
+  .recent-card .player {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.95);
+    line-height: 1.2;
+    margin-bottom: 3px;
+  }
+
+  .recent-card .meta {
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 0.3px;
+    font-weight: 600;
+  }
+
+  .recent-card .trade {
+    font-size: 8px;
+    color: var(--gold);
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .section-divider {
+    padding: 5px 10px;
+    background: rgba(0,0,0,0.55);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    border-top: 1px solid rgba(212,162,74,0.15);
+    border-bottom: 1px solid rgba(212,162,74,0.15);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    align-items: center;
+  }
+
+  .row.pick.new {
+    animation: pickReveal 0.8s ease-out;
+  }
+
+  @keyframes pickReveal {
+    0% { background: rgba(212,162,74,0.4); transform: translateX(-10px); opacity: 0; }
+    100% { background: transparent; transform: translateX(0); opacity: 1; }
+  }
+
+  .row.on-clock {
+    background: rgba(210,35,42,0.12);
+    border-left: 3px solid var(--red);
+  }
+
+  .row .num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    color: var(--gold);
+    line-height: 1;
+    text-align: center;
+  }
+
+  .row.upcoming .num { color: rgba(212,162,74,0.6); }
+
+  .row .team {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    line-height: 1.1;
+    margin-bottom: 2px;
+  }
+
+  .row .player {
+    font-size: 12px;
+    color: rgba(255,255,255,0.9);
+    font-weight: 600;
+  }
+
+  .row .meta {
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  .row .trade {
+    font-size: 9px;
+    color: var(--gold);
+    letter-spacing: 1px;
+    margin-top: 2px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .pick-pos {
+    display: inline-block;
+    padding: 2px 5px;
+    background: var(--blue);
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 10px;
+    border-radius: 2px;
+  }
+
+  .on-clock-tag {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 9px;
+    color: var(--red);
+    background: rgba(210,35,42,0.2);
+    padding: 2px 5px;
+    border: 1px solid var(--red);
+  }
+
+  .empty-state {
+    padding: 20px;
+    text-align: center;
+    opacity: 0.5;
+    font-size: 11px;
+  }
+
+  /* ==== DEBUG PANEL ==== */
+  .debug-panel {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 200;
+    background: rgba(6,9,15,0.98);
+    border: 1px solid var(--gold);
+    border-radius: 4px;
+    display: none;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .debug-panel.show { display: flex; }
+
+  .debug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(212,162,74,0.3);
+    margin-bottom: 8px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--gold);
+  }
+
+  #debug-content {
+    flex: 1;
+    overflow: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--chrome);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* ==== TEAM LOGOS ==== */
+  .team-logo {
+    display: inline-block;
+    vertical-align: middle;
+    object-fit: contain;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+  }
+
+  /* Header NFL shield — replaces the old CSS hex shield */
+  .nfl-shield-img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+  }
+
+  /* Logo on the clock bar (big) */
+  .clock-logo {
+    width: 34px;
+    height: 34px;
+    margin-right: 8px;
+  }
+
+  .clock-team-row {
+    display: flex;
+    align-items: center;
+  }
+
+  /* Logo in recent-picks horizontal cards */
+  .recent-card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    padding-right: 22px;
+  }
+
+  .recent-card-head .team-logo {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .recent-card-head .team {
+    margin-bottom: 0;
+    padding-right: 0;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Logo in on-clock and upcoming rows */
+  .row .team-logo {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+  }
+
+  .on-clock-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .on-clock-row > div {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .row-team-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+
+  .row-team-line .team {
+    margin-bottom: 0;
+  }
+
+  /* Logo in announcement toast */
+  .announcement-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .announcement-head .team-logo {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  /* ==== FIREWORKS / FLASH ==== */
+  /* Canvas sits at z-index 1 (above the background grid at 0, below the
+     UI chrome at z-index 2). This way fireworks are visible behind
+     translucent panels but don't paint over readable content. */
+  #fireworks {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .flash {
+    position: fixed; inset: 0;
+    background: var(--gold);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .flash.active { animation: flashFire 0.4s ease-out; }
+
+  @keyframes flashFire {
+    0% { opacity: 0.5; }
+    100% { opacity: 0; }
+  }
+
+  /* ==== ANNOUNCEMENT (bottom-right toast — never covers board) ==== */
+  /* Modal backdrop — fills the screen when announcement shows */
+  .announcement-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 59;
+    transition: opacity 0.3s ease-out;
+  }
+
+  .announcement-backdrop.show {
+    opacity: 1;
+  }
+
+  /* Center-screen interruptor modal */
+  .announcement {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    z-index: 60;
+    background: linear-gradient(135deg, var(--blue), #012a56);
+    border: 3px solid var(--gold);
+    padding: 32px 48px;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 0 80px rgba(212,162,74,0.7), 0 20px 60px rgba(0,0,0,0.9);
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: min(90vw, 440px);
+  }
+
+  .announcement.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .announcement .label {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 5px;
+    color: var(--gold);
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+
+  .announcement-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+
+  .announcement-head .team-logo {
+    width: 52px !important;
+    height: 52px !important;
+    object-fit: contain;
+  }
+
+  .announcement .team-big {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 2px;
+    line-height: 1;
+    text-align: left;
+  }
+
+  .announcement .select-text {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin: 14px 0;
+  }
+
+  .announcement .player-big {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 4px;
+  }
+
+  .announcement .player-meta {
+    font-size: 12px;
+    color: rgba(255,255,255,0.75);
+    letter-spacing: 1.5px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="fireworks"></canvas>
+<div class="flash" id="flash"></div>
+<div class="announcement-backdrop" id="announcement-backdrop"></div>
+
+<div class="announcement" id="announcement">
+  <div class="label">★ THE PICK IS IN ★</div>
+  <div class="announcement-head">
+    <img class="team-logo" id="ann-logo" src="" alt="" onerror="this.style.visibility='hidden'">
+    <div class="team-big" id="ann-team"></div>
+  </div>
+  <div class="select-text">— SELECT —</div>
+  <div class="player-big" id="ann-player"></div>
+  <div class="player-meta" id="ann-meta"></div>
+</div>
+
+<header>
+  <div class="brand">
+    <img class="nfl-shield-img" src="https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png" alt="NFL" onerror="this.style.display='none'">
+    <div>
+      <h1>Draft Central</h1>
+      <div class="sub" id="header-sub">2026 · Round 1 · Pittsburgh</div>
+    </div>
+  </div>
+  <div class="live-badge checking" id="live-badge">
+    <span class="live-dot"></span>
+    <span id="live-label">CONNECTING</span>
+  </div>
+</header>
+
+<div class="status-banner warn" id="status-banner">Initializing data feed…</div>
+
+<div class="clock-bar">
+  <div>
+    <div class="clock-label" id="clock-label">On the Clock</div>
+    <div class="clock-team-row">
+      <img class="clock-logo" id="clock-logo" src="" alt="" onerror="this.style.visibility='hidden'">
+      <div class="clock-team" id="on-clock-team">—</div>
+    </div>
+  </div>
+  <div class="clock-center">
+    <div class="clock-time" id="clock-time">10:00</div>
+    <div class="clock-pick" id="clock-pick">Pick — of 32</div>
+  </div>
+  <div class="controls">
+    <button class="btn" id="btn-refresh">↻ SYNC</button>
+    <button class="btn" id="btn-debug">DEBUG</button>
+  </div>
+</div>
+
+<main>
+  <div class="panel">
+    <div class="panel-header">
+      <h2 id="board-title">◆ Round 1</h2>
+      <span class="count" id="picks-count">0 / 32</span>
+    </div>
+    <div class="draft-list" id="draft-list">
+      <div class="empty-state">Loading picks…</div>
+    </div>
+  </div>
+</main>
+
+<div class="debug-panel" id="debug-panel">
+  <div class="debug-header">
+    <span>DEBUG: Latest announced pick — raw ESPN response</span>
+    <button class="btn" onclick="document.getElementById('debug-panel').classList.remove('show')">×</button>
+  </div>
+  <pre id="debug-content">No pick data yet. Wait for first pick, then click DEBUG again.</pre>
+</div>
+
+<script>
+// ==================================================================
+// 2026 NFL DRAFT — LIVE TRACKER
+// ==================================================================
+// Data source: ESPN public API
+//   Primary: site.web.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=2026
+//   This is the endpoint ESPN's own Draftcast page uses.
+//
+// NOTES ON CORS / BROWSERS:
+//   Many ESPN site.* endpoints return permissive CORS headers. If your
+//   browser blocks it, the status banner will tell you — the app will
+//   still run on the 10-minute clock so the UI/sound/fireworks work.
+//   You can click SYNC to retry at any time.
+// ==================================================================
+
+// Change &round=1 to &round=2 etc. for later rounds, or remove the round
+// param entirely to fetch all rounds that have data.
+const ESPN_DRAFT_URL = 'https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=2026&round=1';
+
+// CORS fallback strategy: ESPN's API doesn't send CORS headers for browser
+// fetches, so we route through a public CORS proxy. corsproxy.io is the
+// primary — free, no signup, reliable. allorigins is backup. Direct ESPN
+// is tried last since it's been failing in practice.
+const FETCH_STRATEGIES = [
+  { name: 'corsproxy',  url: 'https://corsproxy.io/?url=' + encodeURIComponent(ESPN_DRAFT_URL) },
+  { name: 'allorigins', url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(ESPN_DRAFT_URL) },
+  { name: 'direct',     url: ESPN_DRAFT_URL }
+];
+
+const POLL_INTERVAL_MS = 20000; // 20s — respectful polling during live draft
+const PICK_CLOCK_SECONDS = 600; // Real NFL first-round clock: 10 minutes
+
+// Remember which strategy worked last so we don't re-test direct every poll
+// (if ESPN blocks CORS on your browser, testing it every 20s just wastes time).
+let workingStrategyIndex = 0;
+
+// ==================================================================
+// TEAM LOGOS — ESPN CDN
+// ==================================================================
+// ESPN serves team logos as clean PNGs at a predictable URL pattern.
+// Pattern: https://a.espncdn.com/i/teamlogos/nfl/500/{abbr}.png
+// Abbreviation mapping below is the canonical ESPN team code for each
+// full team name. When ESPN's feed returns a team, we first try to match
+// its abbreviation directly; else fall back to this full-name lookup.
+const TEAM_ABBR = {
+  'Arizona Cardinals': 'ari',
+  'Atlanta Falcons': 'atl',
+  'Baltimore Ravens': 'bal',
+  'Buffalo Bills': 'buf',
+  'Carolina Panthers': 'car',
+  'Chicago Bears': 'chi',
+  'Cincinnati Bengals': 'cin',
+  'Cleveland Browns': 'cle',
+  'Dallas Cowboys': 'dal',
+  'Denver Broncos': 'den',
+  'Detroit Lions': 'det',
+  'Green Bay Packers': 'gb',
+  'Houston Texans': 'hou',
+  'Indianapolis Colts': 'ind',
+  'Jacksonville Jaguars': 'jax',
+  'Kansas City Chiefs': 'kc',
+  'Las Vegas Raiders': 'lv',
+  'Los Angeles Chargers': 'lac',
+  'Los Angeles Rams': 'lar',
+  'Miami Dolphins': 'mia',
+  'Minnesota Vikings': 'min',
+  'New England Patriots': 'ne',
+  'New Orleans Saints': 'no',
+  'New York Giants': 'nyg',
+  'New York Jets': 'nyj',
+  'Philadelphia Eagles': 'phi',
+  'Pittsburgh Steelers': 'pit',
+  'San Francisco 49ers': 'sf',
+  'Seattle Seahawks': 'sea',
+  'Tampa Bay Buccaneers': 'tb',
+  'Tennessee Titans': 'ten',
+  'Washington Commanders': 'wsh'
+};
+
+function teamLogoUrl(teamName, size = 500) {
+  const abbr = TEAM_ABBR[teamName];
+  if (!abbr) return null;
+  return `https://a.espncdn.com/i/teamlogos/nfl/${size}/${abbr}.png`;
+}
+
+// NFL shield (the league logo) — served by ESPN with the same CDN.
+const NFL_SHIELD_URL = 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png';
+
+// Renders an <img> for a team's logo. Falls back to nothing if we don't
+// know the team (keeps text name visible). On network error, hides itself.
+function teamLogoImg(teamName, cssClass = 'team-logo') {
+  const url = teamLogoUrl(teamName);
+  if (!url) return '';
+  return `<img class="${cssClass}" src="${url}" alt="${teamName}" onerror="this.style.display='none'">`;
+}
+
+// ==================================================================
+// STATIC FALLBACK: Known 2026 Round 1 order + trade metadata.
+// Order sourced from Tankathon (reflecting trades as of 4/23/26).
+// Used until the API confirms order, and for trade labels (the ESPN
+// feed doesn't always cleanly expose "via" info).
+// ==================================================================
+const staticOrder = [
+  { pick: 1,  team: 'Las Vegas Raiders',      originalTeam: null },
+  { pick: 2,  team: 'New York Jets',          originalTeam: null },
+  { pick: 3,  team: 'Arizona Cardinals',      originalTeam: null },
+  { pick: 4,  team: 'Tennessee Titans',       originalTeam: null },
+  { pick: 5,  team: 'New York Giants',        originalTeam: null },
+  { pick: 6,  team: 'Cleveland Browns',       originalTeam: null },
+  { pick: 7,  team: 'Washington Commanders',  originalTeam: null },
+  { pick: 8,  team: 'New Orleans Saints',     originalTeam: null },
+  { pick: 9,  team: 'Kansas City Chiefs',     originalTeam: null },
+  { pick: 10, team: 'Cincinnati Bengals',     originalTeam: 'New York Giants' },
+  { pick: 11, team: 'Miami Dolphins',         originalTeam: null },
+  { pick: 12, team: 'Dallas Cowboys',         originalTeam: null },
+  { pick: 13, team: 'Atlanta Falcons',        originalTeam: 'Los Angeles Rams' },
+  { pick: 14, team: 'Baltimore Ravens',       originalTeam: null },
+  { pick: 15, team: 'Tampa Bay Buccaneers',   originalTeam: null },
+  { pick: 16, team: 'Indianapolis Colts',     originalTeam: 'New York Jets' },
+  { pick: 17, team: 'Detroit Lions',          originalTeam: null },
+  { pick: 18, team: 'Minnesota Vikings',      originalTeam: null },
+  { pick: 19, team: 'Carolina Panthers',      originalTeam: null },
+  { pick: 20, team: 'Green Bay Packers',      originalTeam: 'Dallas Cowboys' },
+  { pick: 21, team: 'Pittsburgh Steelers',    originalTeam: null },
+  { pick: 22, team: 'Los Angeles Chargers',   originalTeam: null },
+  { pick: 23, team: 'Philadelphia Eagles',    originalTeam: null },
+  { pick: 24, team: 'Jacksonville Jaguars',   originalTeam: 'Cleveland Browns' },
+  { pick: 25, team: 'Chicago Bears',          originalTeam: null },
+  { pick: 26, team: 'Buffalo Bills',          originalTeam: null },
+  { pick: 27, team: 'San Francisco 49ers',    originalTeam: null },
+  { pick: 28, team: 'Houston Texans',         originalTeam: null },
+  { pick: 29, team: 'Los Angeles Rams',       originalTeam: 'Kansas City Chiefs' },
+  { pick: 30, team: 'Denver Broncos',         originalTeam: 'Miami Dolphins' },
+  { pick: 31, team: 'New England Patriots',   originalTeam: null },
+  { pick: 32, team: 'Seattle Seahawks',       originalTeam: null }
+];
+
+// ==================================================================
+// STATE
+// ==================================================================
+// draftState[i] = { pick, team, originalTeam, player, pos, school, announced }
+// The array is the source of truth rendered to screen.
+let draftState = staticOrder.map(o => ({ ...o, player: null, pos: null, school: null, announced: false }));
+let lastAnnouncedPick = 0;  // highest announced pick number seen
+let lastAnimatedPick = 0;   // the pick number that was last given the 'new' animation class
+let currentRound = 1;       // round number, updated from ESPN when available
+let pickTimerStart = Date.now(); // when current pick's 10-min clock started
+let clockSyncedToFeed = false;    // true when the clock origin came from ESPN data
+let feedStatus = 'connecting'; // 'live' | 'stale' | 'error' | 'connecting'
+let lastSuccessfulFetch = null;
+
+// ==================================================================
+// DOM
+// ==================================================================
+const $onClockTeam = document.getElementById('on-clock-team');
+const $clockLogo = document.getElementById('clock-logo');
+const $clockTime = document.getElementById('clock-time');
+const $clockPick = document.getElementById('clock-pick');
+const $clockLabel = document.getElementById('clock-label');
+const $draftList = document.getElementById('draft-list');
+const $picksCount = document.getElementById('picks-count');
+const $flash = document.getElementById('flash');
+const $announcement = document.getElementById('announcement');
+const $announcementBackdrop = document.getElementById('announcement-backdrop');
+const $annTeam = document.getElementById('ann-team');
+const $annPlayer = document.getElementById('ann-player');
+const $annMeta = document.getElementById('ann-meta');
+const $annLogo = document.getElementById('ann-logo');
+const $btnRefresh = document.getElementById('btn-refresh');
+const $liveBadge = document.getElementById('live-badge');
+const $liveLabel = document.getElementById('live-label');
+const $statusBanner = document.getElementById('status-banner');
+const $boardTitle = document.getElementById('board-title');
+const $headerSub = document.getElementById('header-sub');
+
+// ==================================================================
+// AUDIO — firework sound only (no horn)
+// ==================================================================
+let audioCtx = null;
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playFireworkSound(delay = 0) {
+  const ctx = getCtx();
+  const now = ctx.currentTime + delay;
+
+  // Whistle — rising sweep
+  const whistle = ctx.createOscillator();
+  const whistleGain = ctx.createGain();
+  whistle.type = 'sine';
+  whistle.frequency.setValueAtTime(400, now);
+  whistle.frequency.exponentialRampToValueAtTime(1800, now + 0.45);
+  whistleGain.gain.setValueAtTime(0, now);
+  whistleGain.gain.linearRampToValueAtTime(0.06, now + 0.1);
+  whistleGain.gain.linearRampToValueAtTime(0.03, now + 0.4);
+  whistleGain.gain.linearRampToValueAtTime(0, now + 0.5);
+  whistle.connect(whistleGain);
+  whistleGain.connect(ctx.destination);
+  whistle.start(now);
+  whistle.stop(now + 0.5);
+
+  // Boom — low thump
+  const boomTime = now + 0.48;
+  const boom = ctx.createOscillator();
+  const boomGain = ctx.createGain();
+  boom.type = 'sine';
+  boom.frequency.setValueAtTime(120, boomTime);
+  boom.frequency.exponentialRampToValueAtTime(40, boomTime + 0.35);
+  boomGain.gain.setValueAtTime(0, boomTime);
+  boomGain.gain.linearRampToValueAtTime(0.3, boomTime + 0.02);
+  boomGain.gain.exponentialRampToValueAtTime(0.001, boomTime + 0.5);
+  boom.connect(boomGain);
+  boomGain.connect(ctx.destination);
+  boom.start(boomTime);
+  boom.stop(boomTime + 0.5);
+
+  // Crackle — sparse filtered noise
+  const crackleTime = boomTime + 0.05;
+  const bufferSize = ctx.sampleRate * 1.2;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / bufferSize;
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 1.5) * (Math.random() > 0.85 ? 1 : 0.15);
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 3500;
+  filter.Q.value = 0.8;
+  const crackleGain = ctx.createGain();
+  crackleGain.gain.setValueAtTime(0.12, crackleTime);
+  crackleGain.gain.exponentialRampToValueAtTime(0.001, crackleTime + 1.1);
+  src.connect(filter);
+  filter.connect(crackleGain);
+  crackleGain.connect(ctx.destination);
+  src.start(crackleTime);
+  src.stop(crackleTime + 1.1);
+}
+
+// ==================================================================
+// FIREWORKS CANVAS
+// ==================================================================
+const canvas = document.getElementById('fireworks');
+const fctx = canvas.getContext('2d');
+let particles = [];
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function createFirework(x, y, colorHue) {
+  for (let i = 0; i < 70; i++) {
+    const angle = (Math.PI * 2 * i) / 70 + Math.random() * 0.3;
+    const speed = 2.5 + Math.random() * 4;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.008 + Math.random() * 0.012,
+      size: 2 + Math.random() * 2,
+      hue: colorHue + (Math.random() * 40 - 20)
+    });
+  }
+}
+
+function animate() {
+  // Clear canvas with full transparency (canvas sits behind UI now).
+  // We use source-over with a low-alpha clear-to-transparent trick by
+  // just clearing the whole canvas each frame — no dark fade needed
+  // since the body background already provides the dark atmosphere.
+  fctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.08; p.vx *= 0.99; p.vy *= 0.99;
+    p.life -= p.decay;
+    if (p.life <= 0) return false;
+    fctx.globalAlpha = p.life;
+    fctx.fillStyle = `hsl(${p.hue}, 100%, ${50 + p.life * 30}%)`;
+    fctx.shadowColor = `hsl(${p.hue}, 100%, 60%)`;
+    fctx.shadowBlur = 12;
+    fctx.beginPath();
+    fctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    fctx.fill();
+    return true;
+  });
+  fctx.shadowBlur = 0;
+  fctx.globalAlpha = 1;
+  requestAnimationFrame(animate);
+}
+animate();
+
+function launchFireworksShow() {
+  const palettes = [45, 0, 220, 45, 0]; // gold, red, blue
+  let i = 0;
+  const burst = () => {
+    const x = canvas.width * (0.15 + Math.random() * 0.7);
+    const y = canvas.height * (0.15 + Math.random() * 0.4);
+    createFirework(x, y, palettes[i % palettes.length]);
+    playFireworkSound();
+    i++;
+    if (i < 4) setTimeout(burst, 400 + Math.random() * 300);
+  };
+  burst();
+}
+
+// ==================================================================
+// RENDER
+// ==================================================================
+function fmtTime(s) {
+  if (s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+
+function currentOnClockIndex() {
+  // The pick that is currently on the clock: first un-announced pick.
+  return draftState.findIndex(p => !p.announced);
+}
+
+function renderClock() {
+  $clockLabel.textContent = clockSyncedToFeed ? 'On the Clock · SYNCED' : 'On the Clock';
+  const idx = currentOnClockIndex();
+  if (idx === -1) {
+    $onClockTeam.textContent = 'DRAFT COMPLETE';
+    $clockTime.textContent = '00:00';
+    $clockPick.textContent = 'All 32 picks in';
+    $clockLogo.style.visibility = 'hidden';
+    return;
+  }
+  const next = draftState[idx];
+  const elapsed = Math.floor((Date.now() - pickTimerStart) / 1000);
+  const remaining = PICK_CLOCK_SECONDS - elapsed;
+  $onClockTeam.textContent = next.team;
+  const logoUrl = teamLogoUrl(next.team);
+  if (logoUrl) {
+    $clockLogo.src = logoUrl;
+    $clockLogo.style.visibility = 'visible';
+  } else {
+    $clockLogo.style.visibility = 'hidden';
+  }
+  $clockTime.textContent = fmtTime(remaining);
+  $clockPick.textContent = `Pick ${next.pick} of 32${next.originalTeam ? ' · via ' + next.originalTeam : ''}`;
+  $clockTime.style.color = remaining <= 60 ? 'var(--red)' : 'var(--gold)';
+}
+
+function tradeLine(p) {
+  return p.originalTeam ? `↔ VIA ${p.originalTeam.toUpperCase()}` : '';
+}
+
+function updateRoundDisplay() {
+  const roundLabel = `Round ${currentRound}`;
+  $boardTitle.textContent = `◆ ${roundLabel}`;
+  $headerSub.textContent = `2026 · ${roundLabel} · Pittsburgh`;
+}
+
+function renderList() {
+  const onClockIdx = currentOnClockIndex();
+  const announced = draftState.filter(p => p.announced);
+  const recentPicks = announced.slice().reverse();  // all announced, newest first
+  const onClock = onClockIdx >= 0 ? draftState[onClockIdx] : null;
+  const upcoming = onClockIdx >= 0 ? draftState.slice(onClockIdx + 1) : [];
+
+  let html = '';
+
+  if (recentPicks.length > 0) {
+    html += `<div class="section-divider">◄ Recent Picks (${recentPicks.length})</div>`;
+    html += `<div class="recent-strip">`;
+    // Only give the 'new' animation to the newest pick, and only the FIRST
+    // time we render after that pick arrived. Re-renders from polling will
+    // not re-trigger the flash animation.
+    const newestPick = recentPicks[0].pick;
+    const shouldAnimate = newestPick !== lastAnimatedPick;
+    if (shouldAnimate) lastAnimatedPick = newestPick;
+    recentPicks.forEach((p, idx) => {
+      html += `
+        <div class="recent-card ${idx === 0 && shouldAnimate ? 'new' : ''}">
+          ${teamLogoImg(p.team, 'team-logo')}
+          <div class="card-body">
+            <div class="num">${p.pick}</div>
+            <div class="team">${p.team}</div>
+            <div class="player">${p.player || '(pending)'}</div>
+            <div class="meta">${[p.pos, p.school].filter(Boolean).join(' · ') || '\u2014'}</div>
+            ${p.originalTeam ? `<div class="trade">${tradeLine(p)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  if (onClock) {
+    html += `<div class="section-divider">● On The Clock</div>`;
+    html += `
+      <div class="row on-clock">
+        <div class="num">${onClock.pick}</div>
+        <div class="on-clock-row">
+          ${teamLogoImg(onClock.team, 'team-logo')}
+          <div>
+            <div class="team">${onClock.team}</div>
+            <div class="meta">Pick ${onClock.pick} of 32</div>
+            ${onClock.originalTeam ? `<div class="trade">${tradeLine(onClock)}</div>` : ''}
+          </div>
+        </div>
+        <div class="on-clock-tag">NOW</div>
+      </div>
+    `;
+  }
+
+  if (upcoming.length > 0) {
+    html += `<div class="section-divider">Up Next ▶</div>`;
+    upcoming.forEach(p => {
+      html += `
+        <div class="row upcoming">
+          <div class="num">${p.pick}</div>
+          <div class="on-clock-row">
+            ${teamLogoImg(p.team, 'team-logo')}
+            <div>
+              <div class="team">${p.team}</div>
+              ${p.originalTeam ? `<div class="trade">${tradeLine(p)}</div>` : ''}
+            </div>
+          </div>
+          <div></div>
+        </div>
+      `;
+    });
+  }
+
+  if (!html) {
+    html = '<div class="empty-state">Waiting for draft to begin…</div>';
+  }
+
+  $draftList.innerHTML = html;
+  $picksCount.textContent = `${announced.length} / 32`;
+}
+
+function setFeedStatus(status, message) {
+  feedStatus = status;
+  const map = {
+    live:      { cls: 'ok',   badge: 'live-badge',          badgeLabel: 'LIVE' },
+    stale:     { cls: 'warn', badge: 'live-badge checking', badgeLabel: 'STALE' },
+    error:     { cls: 'err',  badge: 'live-badge offline',  badgeLabel: 'OFFLINE' },
+    connecting:{ cls: 'warn', badge: 'live-badge checking', badgeLabel: 'CONNECTING' }
+  };
+  const m = map[status];
+  $statusBanner.className = 'status-banner ' + m.cls;
+  $statusBanner.textContent = message;
+  $liveBadge.className = m.badge;
+  $liveLabel.textContent = m.badgeLabel;
+}
+
+// ==================================================================
+// ANNOUNCE PICK (fireworks + sound + card)
+// ==================================================================
+function announcePick(pick) {
+  const logoUrl = teamLogoUrl(pick.team);
+  if (logoUrl) {
+    $annLogo.src = logoUrl;
+    $annLogo.style.visibility = 'visible';
+  } else {
+    $annLogo.style.visibility = 'hidden';
+  }
+  $annTeam.textContent = pick.team;
+  $annPlayer.textContent = pick.player || '(pick announced)';
+  $annMeta.textContent = [pick.pos, pick.school].filter(Boolean).join(' · ') +
+    (pick.originalTeam ? ' · via ' + pick.originalTeam : '');
+  $announcementBackdrop.classList.add('show');
+  $announcement.classList.add('show');
+
+  $flash.classList.remove('active');
+  void $flash.offsetWidth;
+  $flash.classList.add('active');
+
+  launchFireworksShow();
+
+  setTimeout(() => {
+    $announcement.classList.remove('show');
+    $announcementBackdrop.classList.remove('show');
+  }, 3500);
+}
+
+// ==================================================================
+// ESPN API FETCH
+// ==================================================================
+// Handle a few possible shapes ESPN has returned over the years for
+// the /draft endpoint. We look for:
+//   - rounds[].picks[] (most common site.web.api shape)
+//   - picks[] directly
+//   - items[] (core API shape)
+// For each pick, we pull:
+//   - overall/pick number
+//   - team (displayName, abbreviation, or nested team.displayName)
+//   - athlete (displayName, firstName+lastName)
+//   - position (abbreviation)
+//   - college/school
+// ==================================================================
+function extractPicks(json) {
+  let rawPicks = [];
+  if (json && Array.isArray(json.rounds)) {
+    json.rounds.forEach(r => {
+      const roundNum = r.number || r.round || r.id || null;
+      if (Array.isArray(r.picks)) {
+        // Attach round number to each pick so we can track it.
+        r.picks.forEach(p => rawPicks.push({ ...p, _round: roundNum }));
+      }
+    });
+  }
+  if (rawPicks.length === 0 && Array.isArray(json.picks)) rawPicks = json.picks;
+  if (rawPicks.length === 0 && Array.isArray(json.items)) rawPicks = json.items;
+
+  return rawPicks.map(p => {
+    const num = p.overall ?? p.pick ?? p.selection ?? (p.displayName ? parseInt(p.displayName) : null);
+    const team = p.team?.displayName || p.team?.name || p.teamName || p.franchise?.displayName || null;
+    const athlete = p.athlete || p.player || p.prospect || {};
+    const playerName = athlete.displayName || athlete.fullName || athlete.name
+      || [athlete.firstName, athlete.lastName].filter(Boolean).join(' ')
+      || null;
+    // Position — try every nesting ESPN has used. Fall back to shortName, text, or string positions.
+    const pos =
+      athlete.position?.abbreviation ||
+      athlete.position?.abbrev ||
+      athlete.position?.shortName ||
+      athlete.position?.name ||
+      athlete.positionAbbreviation ||
+      athlete.displayPosition ||
+      (typeof athlete.position === 'string' ? athlete.position : null) ||
+      p.position?.abbreviation ||
+      p.position?.abbrev ||
+      p.position?.name ||
+      (typeof p.position === 'string' ? p.position : null) ||
+      p.pos ||
+      null;
+    // School — athletes often have a college object, or sometimes it's flat.
+    const school =
+      athlete.college?.name ||
+      athlete.college?.displayName ||
+      athlete.college?.shortName ||
+      athlete.collegeTeam?.displayName ||
+      athlete.collegeTeam?.name ||
+      athlete.collegeName ||
+      (typeof athlete.college === 'string' ? athlete.college : null) ||
+      athlete.school?.name ||
+      athlete.school?.displayName ||
+      (typeof athlete.school === 'string' ? athlete.school : null) ||
+      p.college?.name ||
+      p.college?.displayName ||
+      (typeof p.college === 'string' ? p.college : null) ||
+      p.school ||
+      null;
+    const round = p._round || p.round || p.roundNumber || null;
+    const pickTimeRaw = p.pickTime || p.time || p.timestamp || p.date || p.pickMadeAt || null;
+    const pickTime = pickTimeRaw ? new Date(pickTimeRaw).getTime() : null;
+    return { num, team, playerName, pos, school, round, pickTime, raw: p };
+  }).filter(p => p.num != null);
+}
+
+// Look for a top-level clock/status field on the ESPN payload. Field names
+// vary; try the common candidates. Returns { onClockSince: ms } or null.
+function extractClockStatus(json) {
+  const candidates = [
+    json?.status,
+    json?.draftStatus,
+    json?.currentPick,
+    json?.onTheClock,
+    json?.clock
+  ];
+  for (const c of candidates) {
+    if (!c) continue;
+    const start = c.onClockSince || c.startTime || c.start || c.pickStartTime || c.clockStart;
+    if (start) {
+      const t = new Date(start).getTime();
+      if (!isNaN(t)) return { onClockSince: t };
+    }
+  }
+  return null;
+}
+
+async function tryFetch(strategy) {
+  const res = await fetch(strategy.url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchDraftData() {
+  let json = null;
+  let usedStrategy = null;
+  let lastErr = null;
+
+  // Try the last known good strategy first; if it fails, fall through.
+  const order = [
+    FETCH_STRATEGIES[workingStrategyIndex],
+    ...FETCH_STRATEGIES.filter((_, i) => i !== workingStrategyIndex)
+  ];
+
+  for (const strategy of order) {
+    try {
+      json = await tryFetch(strategy);
+      usedStrategy = strategy;
+      workingStrategyIndex = FETCH_STRATEGIES.indexOf(strategy);
+      break;
+    } catch (err) {
+      lastErr = err;
+      // Continue to next strategy
+    }
+  }
+
+  if (!json) {
+    // All strategies failed
+    if (lastSuccessfulFetch) {
+      setFeedStatus('stale', `Feed lost — last sync ${new Date(lastSuccessfulFetch).toLocaleTimeString()}. Clock runs locally; SYNC to retry.`);
+    } else {
+      setFeedStatus('error', `All feed sources blocked. Clock runs locally. Try SYNC or a different browser. (${lastErr?.message || 'unknown'})`);
+    }
+    return;
+  }
+
+  // Successfully got JSON — extract picks and update state
+  const extracted = extractPicks(json);
+  const clockStatus = extractClockStatus(json);
+
+  extracted.forEach(ep => {
+    const slot = draftState.find(s => s.pick === ep.num);
+    if (!slot) return;
+    // Stash the raw ESPN pick on the slot so the DEBUG button can show it.
+    if (ep.raw) slot.rawEspn = ep.raw;
+    if (ep.playerName && !slot.announced) {
+      slot.player = ep.playerName;
+      slot.pos = ep.pos || slot.pos;
+      slot.school = ep.school || slot.school;
+      slot.pickTime = ep.pickTime;
+      slot.announced = true;
+    } else if (ep.playerName) {
+      slot.player = ep.playerName;
+      if (ep.pos) slot.pos = ep.pos;
+      if (ep.school) slot.school = ep.school;
+      if (ep.pickTime) slot.pickTime = ep.pickTime;
+    }
+    if (ep.round) slot.round = ep.round;
+    // Trust ESPN's team attribution over static data (handles live trades).
+    if (ep.team && ep.team !== slot.team) {
+      if (!slot.originalTeam) slot.originalTeam = slot.team;
+      slot.team = ep.team;
+    }
+  });
+
+  // Determine current round: the round of the on-the-clock pick, or the
+  // highest round seen in announced picks if the draft is over.
+  const onClockPick = draftState.find(p => !p.announced);
+  if (onClockPick?.round) {
+    currentRound = onClockPick.round;
+  } else {
+    const maxRound = Math.max(...draftState.filter(p => p.round).map(p => p.round), 1);
+    currentRound = maxRound;
+  }
+  updateRoundDisplay();
+
+  // Fire announcement for the newest pick only (avoids stacking fireworks
+  // on initial load if many picks already happened).
+  const maxAnnounced = Math.max(...draftState.filter(p => p.announced).map(p => p.pick), 0);
+  if (maxAnnounced > lastAnnouncedPick) {
+    if (lastAnnouncedPick > 0) {
+      const newestPick = draftState.find(p => p.pick === maxAnnounced);
+      if (newestPick) announcePick(newestPick);
+    }
+    lastAnnouncedPick = maxAnnounced;
+  }
+
+  // ============ CLOCK SYNC ============
+  // Priority order for determining when the current pick went on the clock:
+  //   1. Top-level clock field from ESPN (most accurate if present)
+  //   2. Timestamp of the previous pick (when it was announced = when the
+  //      next team went on the clock)
+  //   3. Time of this fetch (fallback, already set as default)
+  if (clockStatus?.onClockSince) {
+    pickTimerStart = clockStatus.onClockSince;
+    clockSyncedToFeed = true;
+  } else {
+    // Find the most recent announced pick with a timestamp; the next pick
+    // went on the clock at that moment.
+    const lastAnnouncedWithTime = draftState
+      .filter(p => p.announced && p.pickTime)
+      .sort((a, b) => b.pick - a.pick)[0];
+    if (lastAnnouncedWithTime && maxAnnounced > 0) {
+      pickTimerStart = lastAnnouncedWithTime.pickTime;
+      clockSyncedToFeed = true;
+    }
+    // If no timestamps exist yet (pre-draft or very early), leave
+    // pickTimerStart at whatever it was (initialized to page load time).
+  }
+  // =====================================
+
+  lastSuccessfulFetch = Date.now();
+  const announcedCount = draftState.filter(p => p.announced).length;
+  const via = usedStrategy.name === 'direct' ? 'ESPN direct' : `via ${usedStrategy.name} proxy`;
+  setFeedStatus('live',
+    `Live feed (${via}) · ${announcedCount} picks in · synced ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`);
+
+  renderList();
+  renderClock();
+}
+
+// ==================================================================
+// MAIN LOOP
+// ==================================================================
+function tick() {
+  renderClock();
+  // If the local 10-min clock hits zero without the feed confirming the
+  // pick, show the next team as "on the clock" and reset the timer. This
+  // keeps the app useful even in offline mode.
+  const elapsed = Math.floor((Date.now() - pickTimerStart) / 1000);
+  if (elapsed >= PICK_CLOCK_SECONDS) {
+    const idx = currentOnClockIndex();
+    if (idx >= 0 && feedStatus !== 'live') {
+      // In non-live modes, auto-advance with a placeholder announcement
+      const pick = draftState[idx];
+      pick.announced = true;
+      pick.player = pick.player || '(awaiting ESPN confirmation)';
+      announcePick(pick);
+      lastAnnouncedPick = pick.pick;
+      pickTimerStart = Date.now();
+      renderList();
+    } else {
+      // Feed is live and didn't report it yet — just reset timer so we
+      // don't spam the announcement. ESPN will catch up.
+      pickTimerStart = Date.now();
+    }
+  }
+}
+
+// Clock ticks every 500ms so the seconds display is always fresh.
+setInterval(tick, 500);
+// Poll ESPN every POLL_INTERVAL_MS.
+setInterval(fetchDraftData, POLL_INTERVAL_MS);
+
+// ==================================================================
+// CONTROLS
+// ==================================================================
+$btnRefresh.addEventListener('click', () => {
+  getCtx().resume();
+  setFeedStatus('connecting', 'Resyncing with ESPN…');
+  fetchDraftData();
+});
+
+document.getElementById('btn-debug').addEventListener('click', () => {
+  const panel = document.getElementById('debug-panel');
+  const content = document.getElementById('debug-content');
+  // Find the most recent announced pick and show its raw ESPN data so we
+  // can see exactly what fields are present (helps diagnose missing
+  // position/school extraction).
+  const latest = draftState.filter(p => p.announced && p.rawEspn).slice(-1)[0];
+  if (latest) {
+    content.textContent =
+      `Pick ${latest.pick} — ${latest.team}\n` +
+      `Parsed: player="${latest.player}", pos="${latest.pos}", school="${latest.school}"\n` +
+      `\n==== RAW ESPN OBJECT ====\n\n` +
+      JSON.stringify(latest.rawEspn, null, 2);
+  } else {
+    content.textContent = 'No picks with raw data yet. Wait for the first pick to drop, then click DEBUG.';
+  }
+  panel.classList.toggle('show');
+});
+
+document.addEventListener('click', () => { getCtx().resume(); }, { once: true });
+
+// ==================================================================
+// INIT
+// ==================================================================
+renderClock();
+renderList();
+fetchDraftData(); // kick off first fetch immediately
+</script>
+
+</body>
+</html>
