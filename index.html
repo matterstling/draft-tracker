@@ -1132,7 +1132,15 @@ function renderClock() {
 }
 
 function tradeLine(p) {
-  return p.originalTeam ? `↔ VIA ${p.originalTeam.toUpperCase()}` : '';
+  if (p.tradeNote) return `↔ ${p.tradeNote.toUpperCase()}`;
+  if (p.originalTeam) return `↔ VIA ${p.originalTeam.toUpperCase()}`;
+  return '';
+}
+
+// Helper: render a <div class="trade"> only if there is trade info on the pick.
+function tradeDiv(p) {
+  const line = tradeLine(p);
+  return line ? `<div class="trade">${line}</div>` : '';
 }
 
 function updateRoundDisplay() {
@@ -1168,7 +1176,7 @@ function renderList() {
             <div class="team">${p.team}</div>
             <div class="player">${p.player || '(pending)'}</div>
             <div class="meta">${[p.pos, p.school].filter(Boolean).join(' · ') || '\u2014'}</div>
-            ${p.originalTeam ? `<div class="trade">${tradeLine(p)}</div>` : ''}
+            ${tradeDiv(p)}
           </div>
         </div>
       `;
@@ -1186,7 +1194,7 @@ function renderList() {
           <div>
             <div class="team">${onClock.team}</div>
             <div class="meta">Pick ${onClock.pick} of 32</div>
-            ${onClock.originalTeam ? `<div class="trade">${tradeLine(onClock)}</div>` : ''}
+            ${tradeDiv(onClock)}
           </div>
         </div>
         <div class="on-clock-tag">NOW</div>
@@ -1204,7 +1212,7 @@ function renderList() {
             ${teamLogoImg(p.team, 'team-logo')}
             <div>
               <div class="team">${p.team}</div>
-              ${p.originalTeam ? `<div class="trade">${tradeLine(p)}</div>` : ''}
+              ${tradeDiv(p)}
             </div>
           </div>
           <div></div>
@@ -1281,6 +1289,90 @@ function announcePick(pick) {
 //   - position (abbreviation)
 //   - college/school
 // ==================================================================
+// ESPN team ID → full team name. Used when ESPN's pick payload only
+// includes teamId (not the full team object), which happens for mid-draft
+// traded picks. The ID is ESPN's internal numeric team ID, stable across seasons.
+const TEAM_ID_MAP = {
+  '1': 'Atlanta Falcons',
+  '2': 'Buffalo Bills',
+  '3': 'Chicago Bears',
+  '4': 'Cincinnati Bengals',
+  '5': 'Cleveland Browns',
+  '6': 'Dallas Cowboys',
+  '7': 'Denver Broncos',
+  '8': 'Detroit Lions',
+  '9': 'Green Bay Packers',
+  '10': 'Tennessee Titans',
+  '11': 'Indianapolis Colts',
+  '12': 'Kansas City Chiefs',
+  '13': 'Las Vegas Raiders',
+  '14': 'Los Angeles Rams',
+  '15': 'Miami Dolphins',
+  '16': 'Minnesota Vikings',
+  '17': 'New England Patriots',
+  '18': 'New Orleans Saints',
+  '19': 'New York Giants',
+  '20': 'New York Jets',
+  '21': 'Philadelphia Eagles',
+  '22': 'Arizona Cardinals',
+  '23': 'Pittsburgh Steelers',
+  '24': 'Los Angeles Chargers',
+  '25': 'San Francisco 49ers',
+  '26': 'Seattle Seahawks',
+  '27': 'Tampa Bay Buccaneers',
+  '28': 'Washington Commanders',
+  '29': 'Carolina Panthers',
+  '30': 'Jacksonville Jaguars',
+  '33': 'Baltimore Ravens',
+  '34': 'Houston Texans'
+};
+
+// ESPN position ID → abbreviation map.
+const POSITION_ID_MAP = {
+  '1': 'QB',
+  '2': 'RB',
+  '3': 'FB',
+  '4': 'WR',
+  '5': 'TE',
+  '6': 'OL',
+  '7': 'OT',
+  '8': 'OG',
+  '9': 'C',
+  '10': 'DL',
+  '11': 'DE',
+  '12': 'DT',
+  '13': 'NT',
+  '14': 'LB',
+  '15': 'ILB',
+  '16': 'OLB',
+  '17': 'MLB',
+  '18': 'DB',
+  '19': 'CB',
+  '20': 'S',
+  '21': 'FS',
+  '22': 'SS',
+  '23': 'K',
+  '24': 'P',
+  '25': 'LS',
+  '26': 'KR',
+  '27': 'PR',
+  '28': 'ATH',
+  '44': 'EDGE',
+  '46': 'OT',
+  '93': 'DL',
+  '94': 'EDGE'
+};
+
+function resolvePosition(positionObj) {
+  if (!positionObj) return null;
+  return positionObj.abbreviation
+    || positionObj.abbrev
+    || positionObj.shortName
+    || positionObj.name
+    || POSITION_ID_MAP[positionObj.id]
+    || (positionObj.id ? `POS-${positionObj.id}` : null);
+}
+
 function extractPicks(json) {
   let rawPicks = [];
   if (json && Array.isArray(json.rounds)) {
@@ -1297,47 +1389,52 @@ function extractPicks(json) {
 
   return rawPicks.map(p => {
     const num = p.overall ?? p.pick ?? p.selection ?? (p.displayName ? parseInt(p.displayName) : null);
-    const team = p.team?.displayName || p.team?.name || p.teamName || p.franchise?.displayName || null;
+    const team = p.team?.displayName
+      || p.team?.name
+      || p.teamName
+      || p.franchise?.displayName
+      || (p.teamId ? TEAM_ID_MAP[String(p.teamId)] : null)
+      || null;
     const athlete = p.athlete || p.player || p.prospect || {};
     const playerName = athlete.displayName || athlete.fullName || athlete.name
       || [athlete.firstName, athlete.lastName].filter(Boolean).join(' ')
       || null;
-    // Position — try every nesting ESPN has used. Fall back to shortName, text, or string positions.
-    const pos =
-      athlete.position?.abbreviation ||
-      athlete.position?.abbrev ||
-      athlete.position?.shortName ||
-      athlete.position?.name ||
-      athlete.positionAbbreviation ||
-      athlete.displayPosition ||
-      (typeof athlete.position === 'string' ? athlete.position : null) ||
-      p.position?.abbreviation ||
-      p.position?.abbrev ||
-      p.position?.name ||
-      (typeof p.position === 'string' ? p.position : null) ||
-      p.pos ||
-      null;
-    // School — athletes often have a college object, or sometimes it's flat.
+    // Position — ESPN often gives just { id: "46" }, so use the ID map.
+    const pos = resolvePosition(athlete.position)
+      || resolvePosition(p.position)
+      || (typeof athlete.position === 'string' ? athlete.position : null)
+      || p.pos
+      || null;
+    // School — for draft prospects, ESPN puts the college under athlete.team
+    // (since from the prospect's perspective, their college IS their team).
+    // Fall back to legacy college/school paths if the shape ever changes.
     const school =
+      athlete.team?.location ||
+      athlete.team?.shortDisplayName ||
+      athlete.team?.displayName ||
+      athlete.team?.name ||
       athlete.college?.name ||
       athlete.college?.displayName ||
       athlete.college?.shortName ||
-      athlete.collegeTeam?.displayName ||
-      athlete.collegeTeam?.name ||
       athlete.collegeName ||
       (typeof athlete.college === 'string' ? athlete.college : null) ||
       athlete.school?.name ||
-      athlete.school?.displayName ||
       (typeof athlete.school === 'string' ? athlete.school : null) ||
       p.college?.name ||
-      p.college?.displayName ||
-      (typeof p.college === 'string' ? p.college : null) ||
-      p.school ||
       null;
     const round = p._round || p.round || p.roundNumber || null;
+    // Trade info: ESPN exposes `tradeNote` directly (e.g. "From DAL"), plus
+    // a `traded` boolean. When true but no note, we display a generic flag.
+    const traded = p.traded === true;
+    const tradeNote = p.tradeNote || (traded ? 'VIA TRADE' : null);
+    // Pick status — ESPN uses an enum. Known value: SELECTION_MADE. Probable
+    // others: ON_THE_CLOCK, PICK_IN, PENDING, TRADED. We surface this so the
+    // UI can eventually react to the "pick is in" state (announcer walking up
+    // vs. actual selection revealed). For now just stored for inspection.
+    const status = p.status || null;
     const pickTimeRaw = p.pickTime || p.time || p.timestamp || p.date || p.pickMadeAt || null;
     const pickTime = pickTimeRaw ? new Date(pickTimeRaw).getTime() : null;
-    return { num, team, playerName, pos, school, round, pickTime, raw: p };
+    return { num, team, playerName, pos, school, round, tradeNote, traded, status, pickTime, raw: p };
   }).filter(p => p.num != null);
 }
 
@@ -1402,6 +1499,7 @@ async function fetchDraftData() {
   }
 
   // Successfully got JSON — extract picks and update state
+  window.__lastEspnJson = json;  // exposed for the DEBUG button to inspect
   const extracted = extractPicks(json);
   const clockStatus = extractClockStatus(json);
 
@@ -1410,19 +1508,27 @@ async function fetchDraftData() {
     if (!slot) return;
     // Stash the raw ESPN pick on the slot so the DEBUG button can show it.
     if (ep.raw) slot.rawEspn = ep.raw;
-    if (ep.playerName && !slot.announced) {
+    // Only treat the pick as "announced" when ESPN says so. Known confirming
+    // status: SELECTION_MADE. We also accept picks with a player name and
+    // no conflicting status, in case ESPN serves data without status set
+    // (the player name implies the pick happened).
+    const isConfirmed = ep.status === 'SELECTION_MADE' || (ep.playerName && !ep.status);
+    if (ep.playerName && !slot.announced && isConfirmed) {
       slot.player = ep.playerName;
       slot.pos = ep.pos || slot.pos;
       slot.school = ep.school || slot.school;
       slot.pickTime = ep.pickTime;
       slot.announced = true;
     } else if (ep.playerName) {
+      // Keep player data fresh even if already announced (ESPN might fix a typo)
       slot.player = ep.playerName;
       if (ep.pos) slot.pos = ep.pos;
       if (ep.school) slot.school = ep.school;
       if (ep.pickTime) slot.pickTime = ep.pickTime;
     }
     if (ep.round) slot.round = ep.round;
+    if (ep.tradeNote) slot.tradeNote = ep.tradeNote;
+    if (ep.status) slot.status = ep.status;
     // Trust ESPN's team attribution over static data (handles live trades).
     if (ep.team && ep.team !== slot.team) {
       if (!slot.originalTeam) slot.originalTeam = slot.team;
@@ -1531,19 +1637,37 @@ $btnRefresh.addEventListener('click', () => {
 document.getElementById('btn-debug').addEventListener('click', () => {
   const panel = document.getElementById('debug-panel');
   const content = document.getElementById('debug-content');
-  // Find the most recent announced pick and show its raw ESPN data so we
-  // can see exactly what fields are present (helps diagnose missing
-  // position/school extraction).
   const latest = draftState.filter(p => p.announced && p.rawEspn).slice(-1)[0];
+  // Compose a diagnostic dump:
+  //   1. Summary of all picks' current statuses
+  //   2. Raw ESPN data for the latest announced pick
+  //   3. Top-level JSON (without rounds) to reveal trade/transaction arrays
+  let out = '';
+
+  out += `=== PICK STATUSES ===\n`;
+  draftState.forEach(p => {
+    const status = p.status || (p.announced ? '(announced, no status field)' : '(not announced)');
+    out += `#${String(p.pick).padStart(2)} ${p.team.padEnd(24)} | ${status}\n`;
+  });
+
   if (latest) {
-    content.textContent =
-      `Pick ${latest.pick} — ${latest.team}\n` +
-      `Parsed: player="${latest.player}", pos="${latest.pos}", school="${latest.school}"\n` +
-      `\n==== RAW ESPN OBJECT ====\n\n` +
-      JSON.stringify(latest.rawEspn, null, 2);
-  } else {
-    content.textContent = 'No picks with raw data yet. Wait for the first pick to drop, then click DEBUG.';
+    out += `\n=== LATEST PICK: ${latest.team} picked ${latest.player} ===\n`;
+    out += `Parsed: pos="${latest.pos}", school="${latest.school}", status="${latest.status}"\n`;
+    out += `\n--- Raw ESPN pick object ---\n`;
+    out += JSON.stringify(latest.rawEspn, null, 2);
   }
+
+  if (window.__lastEspnJson) {
+    // Full top-level response minus the rounds (which are the individual picks
+    // we already dumped). This reveals anything ESPN puts at the top — trade
+    // announcements, status objects, overall draft state, etc.
+    const topLevel = { ...window.__lastEspnJson };
+    if (topLevel.rounds) topLevel.rounds = '[see individual picks above]';
+    out += `\n\n=== TOP-LEVEL ESPN RESPONSE (rounds collapsed) ===\n`;
+    out += JSON.stringify(topLevel, null, 2);
+  }
+
+  content.textContent = out || 'No data yet.';
   panel.classList.toggle('show');
 });
 
