@@ -841,7 +841,7 @@
   </div>
   <div class="controls">
     <button class="btn" id="btn-refresh">↻ SYNC</button>
-    <button class="btn" id="btn-debug" style="display:none;">DEBUG</button>
+    <button class="btn" id="btn-debug">DEBUG</button>
   </div>
 </div>
 
@@ -1477,11 +1477,26 @@ function announcePick(pick) {
 // dynamically on every fetch so the data is always current and complete.
 // Static fallbacks are provided only for cases where the runtime data
 // hasn't loaded yet (pre-first-fetch).
+// Static fallback used only until hydrateReferenceMaps() runs on the first
+// fetch. The draft response's json.positions[] is the authoritative source
+// and overwrites these values at runtime. This list is drawn from ESPN's
+// own positions feed in the draft response (confirmed during the 2026 draft).
 const POSITION_ID_MAP = {
   '1':   'WR',
+  '7':   'TE',
   '8':   'QB',
   '9':   'RB',
+  '10':  'FB',
+  '29':  'CB',
+  '30':  'LB',
+  '32':  'DT',
+  '36':  'S',
   '46':  'OT',
+  '47':  'OG',
+  '80':  'PK',
+  '91':  'C',
+  '94':  'P',
+  '96':  'LS',
   '264': 'EDGE'
 };
 
