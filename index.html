@@ -704,6 +704,49 @@
     color: rgba(255,255,255,0.75);
     letter-spacing: 1.5px;
   }
+
+  /* Corner toast for trades — less intrusive than the pick-announcement modal */
+  .trade-toast {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 55;
+    background: linear-gradient(135deg, #2a1a00, #1a0f00);
+    border: 2px solid var(--gold);
+    padding: 10px 14px;
+    min-width: 200px;
+    opacity: 0;
+    transform: translateX(calc(100% + 20px));
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 0 30px rgba(212,162,74,0.5), 0 6px 20px rgba(0,0,0,0.8);
+  }
+
+  .trade-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .trade-toast .toast-label {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 3px;
+    color: var(--gold);
+    font-size: 10px;
+    margin-bottom: 3px;
+  }
+
+  .trade-toast .toast-team {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+  }
+
+  .trade-toast .toast-desc {
+    font-size: 10px;
+    color: rgba(255,255,255,0.75);
+    letter-spacing: 0.5px;
+  }
 </style>
 </head>
 <body>
@@ -711,6 +754,10 @@
 <canvas id="fireworks"></canvas>
 <div class="flash" id="flash"></div>
 <div class="announcement-backdrop" id="announcement-backdrop"></div>
+
+<div class="trade-toast" id="trade-toast">
+  <div id="trade-toast-body"></div>
+</div>
 
 <div class="announcement" id="announcement">
   <div class="label">★ THE PICK IS IN ★</div>
@@ -1247,6 +1294,79 @@ function setFeedStatus(status, message) {
 // ==================================================================
 // ANNOUNCE PICK (fireworks + sound + card)
 // ==================================================================
+// ==================================================================
+// EVENT QUEUE
+// ==================================================================
+// ESPN's API is poll-based, not push-based, but a single poll can surface
+// multiple meaningful state changes at once (e.g. a pick dropped AND a
+// team traded up in the same 20-second window). Rather than collapse them
+// into one update, we diff the fresh state against our local state, emit
+// discrete events, and drain them through a queue so each celebration
+// gets its moment instead of stepping on the previous one.
+//
+// Event types:
+//   - pick_made:            a pick newly confirmed (SELECTION_MADE) — fireworks + modal
+//   - trade_detected:       a pick's team or tradeNote changed — brief toast
+//   - status_changed:       pick status moved (PENDING → ON_THE_CLOCK, etc.)
+//   - player_updated:       player/pos/school corrected on an announced pick (silent)
+//
+// Only user-facing events (pick_made, trade_detected) use the queue.
+// Silent updates apply immediately during reconciliation.
+
+const eventQueue = [];
+let eventQueueDraining = false;
+
+function enqueueEvent(event) {
+  eventQueue.push(event);
+  if (!eventQueueDraining) drainEventQueue();
+}
+
+async function drainEventQueue() {
+  eventQueueDraining = true;
+  while (eventQueue.length > 0) {
+    const event = eventQueue.shift();
+    try {
+      await handleEvent(event);
+    } catch (err) {
+      console.error('Event handler error:', err, event);
+    }
+  }
+  eventQueueDraining = false;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function handleEvent(event) {
+  switch (event.type) {
+    case 'pick_made':
+      announcePick(event.pick);
+      // Hold the next event until the modal/fireworks finish (3.5s show + 0.3s gap).
+      await sleep(3800);
+      break;
+    case 'trade_detected':
+      showTradeToast(event.pick, event.tradeDescription);
+      await sleep(1500); // shorter — trade toast is a subtler interruption
+      break;
+    default:
+      // No celebration; return immediately so subsequent queued events proceed.
+      break;
+  }
+}
+
+// Small corner toast for trades — distinct from the big pick-announcement modal.
+function showTradeToast(pick, description) {
+  const toast = document.getElementById('trade-toast');
+  const toastBody = document.getElementById('trade-toast-body');
+  toastBody.innerHTML = `
+    <div class="toast-label">⇄ TRADE</div>
+    <div class="toast-team">${pick.team}</div>
+    <div class="toast-desc">${description}</div>
+  `;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// ==================================================================
 function announcePick(pick) {
   const logoUrl = teamLogoUrl(pick.team);
   if (logoUrl) {
@@ -1329,15 +1449,15 @@ const TEAM_ID_MAP = {
 
 // ESPN position ID → abbreviation map.
 const POSITION_ID_MAP = {
-  '1': 'QB',
+  '1': 'WR',
   '2': 'RB',
   '3': 'FB',
   '4': 'WR',
   '5': 'TE',
   '6': 'OL',
   '7': 'OT',
-  '8': 'OG',
-  '9': 'C',
+  '8': 'QB',
+  '9': 'RB',
   '10': 'DL',
   '11': 'DE',
   '12': 'DT',
@@ -1360,7 +1480,8 @@ const POSITION_ID_MAP = {
   '44': 'EDGE',
   '46': 'OT',
   '93': 'DL',
-  '94': 'EDGE'
+  '94': 'EDGE',
+  '264': 'EDGE'
 };
 
 function resolvePosition(positionObj) {
@@ -1503,15 +1624,28 @@ async function fetchDraftData() {
   const extracted = extractPicks(json);
   const clockStatus = extractClockStatus(json);
 
+  // ============ DIFF + EVENT EMISSION ============
+  // For each pick ESPN returned, compare against our local slot and emit
+  // events for anything meaningful that changed. Then apply the updates.
+  //
+  // Suppression rules:
+  //   - First fetch after page load: suppress pick_made and trade_detected
+  //     events, so reloading the page mid-draft doesn't replay every pick.
+  //   - Subsequent fetches: events fire normally.
+  const isFirstFetch = !lastSuccessfulFetch;
+  const newEvents = [];
+
   extracted.forEach(ep => {
     const slot = draftState.find(s => s.pick === ep.num);
     if (!slot) return;
-    // Stash the raw ESPN pick on the slot so the DEBUG button can show it.
+
+    // Stash raw for debug inspection.
     if (ep.raw) slot.rawEspn = ep.raw;
-    // Only treat the pick as "announced" when ESPN says so. Known confirming
-    // status: SELECTION_MADE. We also accept picks with a player name and
-    // no conflicting status, in case ESPN serves data without status set
-    // (the player name implies the pick happened).
+
+    // --- EVENT: pick_made ---
+    // A pick transitions from unannounced to announced. ESPN's SELECTION_MADE
+    // status is the authoritative signal; a player name with no conflicting
+    // status is accepted as a secondary signal.
     const isConfirmed = ep.status === 'SELECTION_MADE' || (ep.playerName && !ep.status);
     if (ep.playerName && !slot.announced && isConfirmed) {
       slot.player = ep.playerName;
@@ -1519,22 +1653,69 @@ async function fetchDraftData() {
       slot.school = ep.school || slot.school;
       slot.pickTime = ep.pickTime;
       slot.announced = true;
-    } else if (ep.playerName) {
-      // Keep player data fresh even if already announced (ESPN might fix a typo)
+      if (!isFirstFetch) {
+        newEvents.push({ type: 'pick_made', pick: slot });
+      }
+    } else if (ep.playerName && slot.announced) {
+      // Silent update — already-announced pick has updated data (ESPN fixed
+      // a typo, or provided info we didn't have before). Just apply it.
+      const changed = slot.player !== ep.playerName || slot.pos !== ep.pos || slot.school !== ep.school;
       slot.player = ep.playerName;
       if (ep.pos) slot.pos = ep.pos;
       if (ep.school) slot.school = ep.school;
       if (ep.pickTime) slot.pickTime = ep.pickTime;
+      // Not queued — player_updated is silent, UI re-renders naturally.
     }
-    if (ep.round) slot.round = ep.round;
-    if (ep.tradeNote) slot.tradeNote = ep.tradeNote;
-    if (ep.status) slot.status = ep.status;
-    // Trust ESPN's team attribution over static data (handles live trades).
-    if (ep.team && ep.team !== slot.team) {
-      if (!slot.originalTeam) slot.originalTeam = slot.team;
+
+    // --- EVENT: trade_detected ---
+    // Either the team changed from what we had, or tradeNote appeared for
+    // the first time. We emit a single event per new trade, not per re-render.
+    const prevTeam = slot.team;
+    const prevTradeNote = slot.tradeNote;
+    let tradeChangeDescription = null;
+
+    if (ep.team && ep.team !== prevTeam) {
+      // Team changed mid-draft — this is an active trade-up/trade-down.
+      if (!slot.originalTeam) slot.originalTeam = prevTeam;
       slot.team = ep.team;
+      tradeChangeDescription = `Acquired pick from ${prevTeam}`;
     }
+    if (ep.tradeNote && ep.tradeNote !== prevTradeNote) {
+      // ESPN surfaced new trade metadata on this pick.
+      slot.tradeNote = ep.tradeNote;
+      tradeChangeDescription = tradeChangeDescription || ep.tradeNote;
+    }
+    if (tradeChangeDescription && !isFirstFetch) {
+      newEvents.push({
+        type: 'trade_detected',
+        pick: slot,
+        tradeDescription: tradeChangeDescription
+      });
+    }
+
+    // Apply non-celebratory updates directly (no event needed).
+    if (ep.round) slot.round = ep.round;
+    if (ep.status) slot.status = ep.status;
   });
+
+  // Enqueue events in pick order so they play naturally (earlier picks first,
+  // earlier events first). Trades that fire alongside a pick on the same team
+  // are attached to that pick: the pick celebration shows first, then trade toast.
+  newEvents.sort((a, b) => {
+    if (a.pick.pick !== b.pick.pick) return a.pick.pick - b.pick.pick;
+    // Same pick: pick_made comes before trade_detected for readability.
+    const order = { pick_made: 0, trade_detected: 1 };
+    return (order[a.type] || 99) - (order[b.type] || 99);
+  });
+  newEvents.forEach(e => enqueueEvent(e));
+
+  // Track lastAnnouncedPick for render-layer animation control (separate
+  // from the event queue — this is just "what's the newest pick on the board").
+  const maxAnnounced = Math.max(...draftState.filter(p => p.announced).map(p => p.pick), 0);
+  if (maxAnnounced > lastAnnouncedPick) {
+    lastAnnouncedPick = maxAnnounced;
+  }
+  // ============ END DIFF + EVENT EMISSION ============
 
   // Determine current round: the round of the on-the-clock pick, or the
   // highest round seen in announced picks if the draft is over.
@@ -1546,17 +1727,6 @@ async function fetchDraftData() {
     currentRound = maxRound;
   }
   updateRoundDisplay();
-
-  // Fire announcement for the newest pick only (avoids stacking fireworks
-  // on initial load if many picks already happened).
-  const maxAnnounced = Math.max(...draftState.filter(p => p.announced).map(p => p.pick), 0);
-  if (maxAnnounced > lastAnnouncedPick) {
-    if (lastAnnouncedPick > 0) {
-      const newestPick = draftState.find(p => p.pick === maxAnnounced);
-      if (newestPick) announcePick(newestPick);
-    }
-    lastAnnouncedPick = maxAnnounced;
-  }
 
   // ============ CLOCK SYNC ============
   // Priority order for determining when the current pick went on the clock:
